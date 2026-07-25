@@ -1,0 +1,19 @@
+{
+  "skill": "zeroclaw-introspect",
+  "should_trigger": [
+    "what's my zeroclaw agent's current status?",
+    "is the zeroclaw daemon healthy?",
+    "show me what model provider my agent is configured with",
+    "how much have I spent on tokens this month?",
+    "why is my telegram channel erroring in zeroclaw?",
+    "what tools does my zeroclaw agent have available?",
+    "check the effective security posture of my agent"
+  ],
+  "should_not_trigger": [
+    "what is zeroclaw?",
+    "explain the agent-as-a-join model",
+    "create a new agent called example_agent",
+    "grant the filesystem MCP server to my agent",
+    "install the code-review skill into my ops bundle"
+  ]
+}

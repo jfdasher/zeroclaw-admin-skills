@@ -1,0 +1,18 @@
+{
+  "skill": "zeroclaw-orientation",
+  "should_trigger": [
+    "what is zeroclaw?",
+    "explain how zeroclaw's config model works",
+    "how do agents relate to providers and channels in zeroclaw?",
+    "what are the rules for a zeroclaw alias?",
+    "where does zeroclaw store its config and state?",
+    "what's the difference between a risk profile and a runtime profile?"
+  ],
+  "should_not_trigger": [
+    "what's my zeroclaw agent's current status?",
+    "is my zeroclaw daemon healthy right now?",
+    "create a new zeroclaw agent called example_agent",
+    "add an MCP server to my agent",
+    "install a skill into my zeroclaw bundle"
+  ]
+}

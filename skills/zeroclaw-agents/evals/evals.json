@@ -1,0 +1,19 @@
+{
+  "skill": "zeroclaw-agents",
+  "should_trigger": [
+    "create a new zeroclaw agent called example_agent",
+    "point my agent at the anthropic provider",
+    "rename my zeroclaw agent from bot to assistant",
+    "delete the old test agent",
+    "I'm getting a dangling_reference error when loading config",
+    "change my agent's autonomy level to full",
+    "add a new telegram channel alias"
+  ],
+  "should_not_trigger": [
+    "what is zeroclaw?",
+    "what's my agent's current status?",
+    "add an MCP server for filesystem access",
+    "install a skill from a git repo",
+    "how much have I spent on tokens?"
+  ]
+}

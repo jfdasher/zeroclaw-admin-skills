@@ -1,0 +1,18 @@
+{
+  "skill": "zeroclaw-skills-tools",
+  "should_trigger": [
+    "install a zeroclaw skill from this directory",
+    "create a skill bundle for my ops agent",
+    "audit this skill before I install it",
+    "my agent isn't using the skill I installed",
+    "what tools does my zeroclaw agent actually load?",
+    "should I enable allow_scripts for zeroclaw skills?"
+  ],
+  "should_not_trigger": [
+    "what is zeroclaw?",
+    "create a new zeroclaw agent",
+    "add an MCP server to my agent",
+    "is my daemon healthy?",
+    "what's my token spend this month?"
+  ]
+}

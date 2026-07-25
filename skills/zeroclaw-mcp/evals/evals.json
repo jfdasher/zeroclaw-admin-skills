@@ -1,0 +1,18 @@
+{
+  "skill": "zeroclaw-mcp",
+  "should_trigger": [
+    "add an MCP server to zeroclaw",
+    "give my example_agent agent access to the filesystem MCP",
+    "why can't my agent see the MCP tools?",
+    "revoke the github MCP server from this agent",
+    "how do I store the MCP bearer token securely?",
+    "set up an mcp bundle for my agent"
+  ],
+  "should_not_trigger": [
+    "what is zeroclaw?",
+    "create a new agent called example_agent",
+    "install a zeroclaw skill from a git repo",
+    "what's my daemon's health status?",
+    "how much have I spent on tokens?"
+  ]
+}
