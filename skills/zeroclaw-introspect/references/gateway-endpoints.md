@@ -67,6 +67,40 @@ All of these are `/api/*` and therefore bearer-authenticated.
 | `PATCH /api/config` | Atomic RFC 6902 JSON Patch. `add`/`replace`/`remove`/`test` only |
 | `GET /api/config/drift` | Whether on-disk config drifted from the in-memory copy |
 | `POST /api/config/migrate` | Apply schema migration in place |
+| `GET /api/config/map-keys?path=<section>` | List the aliases in a map-keyed section |
+| `POST /api/config/map-key?path=<section>&key=<alias>` | **Create** a map key |
+| `DELETE /api/config/map-key?path=<section>&key=<alias>` | **Remove** a map key |
+| `POST /api/config/rename-map-key` | Rename a map key. JSON body `{path, from, to}` |
+
+### The map-key family
+
+These four are the **only** way to add or remove *structure* — a whole alias
+entry — from config. `config set` and `PATCH` edit fields inside structure that
+already exists; neither can create or delete an alias. See "Mutating config
+structure" in `zeroclaw-orientation`'s `config-model.md` for the full model.
+
+`path` and `key` are both required on create and delete; omitting either yields
+`Failed to deserialize query string`.
+
+Two response traps:
+
+- **`DELETE` returns `{"created": false}` on success.** The handler shares one
+  response struct with `POST` and hardcodes `created: false`. It is not an error
+  and not a "nothing happened" signal. Confirm removal with
+  `GET /api/config/map-keys`, not by reading the response.
+- **A `warnings` array may appear on agent deletion**, and is omitted when empty.
+  Non-empty means the *config* delete succeeded but one or more owned-state side
+  effects did not — workspace archive, memory/cron/acp purge, session
+  attribution. Inspect the archive directory before reusing the alias. Never
+  treat a 200 carrying warnings as a clean delete.
+
+For aliased sections (`agents`, `channels.*`, `providers.*`, `risk_profiles`, …)
+`DELETE` and rename route through the **same cascade engine** as the CLI's
+`delete` and `rename`, scrubbing inbound references identically. Agent deletion
+additionally refuses on hard references — an enabled `heartbeat.agent` or a live
+ACP session — and **fails closed** if the session store cannot be read.
+Non-aliased sections (`mcp_bundles`, `skill_bundles`, `peer_groups`) get a plain
+key removal with no cascade.
 
 `OPTIONS` returns capabilities; `GET` returns current values. The `Allow` header
 on `OPTIONS /api/config` still advertises legacy `PUT`, which the router does not
@@ -83,6 +117,35 @@ register — ignore it.
 `allow_remote_admin` has no effect unless `require_pairing` is also on: with
 pairing disabled a remote caller cannot be authenticated, so the request is
 rejected rather than allowed anonymously.
+
+### "Loopback" means the socket's peer address
+
+A reverse proxy on the same host — `tailscale serve`, nginx, Caddy — connects to
+the gateway *from* loopback. The gateway sees the proxy, not the original
+client, so **every proxied request is treated as a loopback caller** and the
+unauthenticated `/admin/*` tier applies to anyone who can reach the proxy.
+
+This is the normal way ZeroClaw's browser admin plane is published: the gateway
+stays bound to `127.0.0.1`, `gateway.web_dist_dir` serves the UI at `/`, and the
+proxy fronts it. Verified against a live v0.8.3 instance behind
+`tailscale serve`: `POST /admin/reload` and `GET /admin/paircode` both answer
+`200` unauthenticated from a different host on the tailnet, while `/api/*`
+still answers `401`. `allow_remote_admin = false` does not change this — it
+gates on peer address, and the peer address is loopback.
+
+Consequences worth stating plainly when auditing a deployment:
+
+- The proxy's own access control **is** the admin perimeter. For `tailscale
+  serve` that is the tailnet plus its ACLs and any node sharing.
+- `POST /admin/paircode/new` is reachable the same way, so anyone who can reach
+  the proxy can mint a pairing code, exchange it at `/pair`, and obtain a full
+  bearer token. The `401`s on `/api/*` are not a second line of defence.
+- `gateway.trust_forwarded_headers` exists for exactly this shape. If a
+  deployment needs `/admin/*` restricted to the real host, that is the knob to
+  investigate — but verify the resulting behavior rather than assuming it.
+
+None of this is a defect. It is the intended deployment model, and it is why
+this skill family does **not** assume administration happens over SSH.
 
 ## The route inventory caveat
 

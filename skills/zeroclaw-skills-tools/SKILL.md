@@ -5,8 +5,9 @@ description: Installs, audits, and manages ZeroClaw's own skills and skill bundl
 
 # ZeroClaw skills and tool visibility
 
-Verified against **ZeroClaw v0.8.3**. Assumes the session runs on the same host
-as the daemon.
+Verified against **ZeroClaw v0.8.3**. CLI commands need a shell on the daemon's
+host (directly or over SSH); `curl` examples need only reach the gateway, which
+is often published through a same-host reverse proxy. See `zeroclaw-introspect`.
 
 > **Scope note.** This covers **ZeroClaw's** skill feature — `SKILL.md`/`SKILL.toml`
 > files installed into a ZeroClaw bundle and loaded by a ZeroClaw agent at runtime.

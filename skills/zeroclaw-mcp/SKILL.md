@@ -5,8 +5,9 @@ description: Provisions MCP servers for ZeroClaw agents - adding server definiti
 
 # Provisioning MCP servers
 
-Verified against **ZeroClaw v0.8.3**. Assumes the session runs on the same host
-as the daemon.
+Verified against **ZeroClaw v0.8.3**. CLI commands need a shell on the daemon's
+host (directly or over SSH); `curl` examples need only reach the gateway, which
+is often published through a same-host reverse proxy. See `zeroclaw-introspect`.
 
 **There is no `zeroclaw mcp` subcommand at v0.8.3.** MCP is configured entirely
 through `zeroclaw config`. If you reach for `zeroclaw mcp add`, stop — it does
@@ -146,7 +147,9 @@ zeroclaw config set mcp.servers.github.args '["--token","ghp_..."]'
 ```
 
 Omitting the value makes the CLI prompt with masked input. Verify with
-`zeroclaw config list --secrets`, which reports population, not contents.
+`GET /api/config/prop?path=<dotted>`, which returns `{path, populated}` without
+decrypting anything. `zeroclaw config list --secrets` also works but is not
+uniformly masked — see the warning in `zeroclaw-introspect`.
 
 ## Revoking access
 
@@ -164,6 +167,26 @@ this to carve an exception out of a shared bundle without forking it:
 ```sh
 zeroclaw config set mcp_bundles.restricted.exclude '["shell_server"]'
 ```
+
+**Deleting a bundle outright is a structural change**, and `config set` cannot do
+it. Neither can `config patch` — `remove` on `/mcp_bundles/mail` fails with
+`property path not found in schema: mcp_bundles.mail`, the mirror image of the
+creation asymmetry above. Use the map-key endpoint:
+
+```sh
+curl -s -X DELETE -H "Authorization: Bearer $ZC_TOKEN" \
+  "http://localhost:42617/api/config/map-key?path=mcp_bundles&key=mail"
+# {"path":"mcp_bundles","key":"mail","created":false}  ← success, despite the name
+
+curl -s -H "Authorization: Bearer $ZC_TOKEN" \
+  "http://localhost:42617/api/config/map-keys?path=mcp_bundles"   # confirm
+curl -X POST http://localhost:42617/admin/reload
+```
+
+`created: false` is a literal shared with the create handler, not a failure
+signal — confirm with `map-keys`, not the response body. The same call removes
+`skill_bundles` and `peer_groups` entries. Full model in "Mutating config
+structure" in `zeroclaw-orientation`'s `config-model.md`.
 
 ## Security posture
 

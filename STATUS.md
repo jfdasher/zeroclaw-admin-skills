@@ -47,13 +47,49 @@ TOML append; `config set` works only *after* the entry exists. `mcp_bundles`
 *is* a real map and accepts `config set` directly. That asymmetry is the single
 most confusing thing about configuring MCP, and it is now called out explicitly.
 
+## Second live round — 2026-07-25
+
+Found while doing real administration work on a v0.8.3 instance, not while
+testing the skills. Both were gaps rather than errors: the skills were silent
+where they should have spoken.
+
+**4. Structural config change was undocumented.** Removing a whole alias entry
+is impossible through `config set` *or* `config patch` — `remove` on
+`/mcp_bundles/mail` fails with `property path not found in schema`, exactly like
+the creation case in defect 3. The full map-key family
+(`GET /api/config/map-keys`, `POST`/`DELETE /api/config/map-key`,
+`POST /api/config/rename-map-key`) was verified in the router at v0.8.3 and
+exercised live; `DELETE` and rename reach the same cascade engine as the CLI's
+`delete`/`rename` for aliased sections. `DELETE` returns `{"created": false}` on
+success — a shared response literal, not a failure. The three-tier model
+(field / structure / list) now lives in `zeroclaw-orientation`, with mechanics in
+`references/config-model.md` and routes in `zeroclaw-introspect`'s
+`references/gateway-endpoints.md`.
+
+**5. `config list --secrets` is not uniformly masked.** Scalar secrets render as
+`****`, but `gateway.paired_tokens` — a `Vec<String>` secret — prints every token
+in full on a live instance. Skills recommended the command as a safe population
+check; `zeroclaw-introspect` and `zeroclaw-mcp` now point at
+`GET /api/config/prop` instead, which returns `{path, populated}` without
+decrypting, and the `--secrets` output carries a handling warning. The claim that
+reads report "no value, no length, no mask, no hash" remains true of the **API**;
+it was never true of that CLI command.
+
+Also documented, both verified live: **pairing is close to one-way** — each pair
+appends to `gateway.paired_tokens`, positional array removal is rejected, and
+`zeroclaw gateway` has no unpair subcommand — and **"loopback" means the socket's
+peer address**, so a same-host reverse proxy makes the unauthenticated `/admin/*`
+tier reachable by anyone who can reach the proxy, regardless of
+`allow_remote_admin`.
+
 ## Confirmed correct
 
 Verified against a live daemon and behaving as documented: the alias grammar
 (hyphen, uppercase, `__`, leading underscore, and >63 characters all rejected);
 `agents create/rename/delete` including `--dry-run` genuinely not deleting;
-`read_only` rejected as an autonomy level; secrets returning `populated` with no
-value, length, mask, or hash; the absence of a `zeroclaw mcp` subcommand; the
+`read_only` rejected as an autonomy level; the **API** returning `populated` with
+no value, length, mask, or hash (but see defect 5 for the CLI); the absence of a
+`zeroclaw mcp` subcommand; the
 absence of a `--skill` flag on `skills install`; hyphen rejection on bundle
 aliases alongside hyphen *requirement* on skill directory names; MCP default-deny
 for an agent with no bundles; `/admin/reload` succeeding from loopback without a
@@ -72,10 +108,14 @@ live: the `estop` family (disruptive to test on a working instance), OTP gating,
 and sandbox backend selection. They are described conservatively; treat them as
 source-verified only.
 
-**Remote operation.** The skills assume a local vantage point. Driving a remote
-instance over the gateway would need the auth story throughout, plus
-`allow_remote_admin` semantics — the material exists in `references/`, but no
-skill is written for that workflow.
+**Remote operation.** *(Addressed 2026-07-25.)* The skills no longer assume a
+local vantage point. Each opening line now separates CLI commands (need a shell
+on the host, directly or over SSH) from `curl` examples (need only gateway
+reach), and `zeroclaw-introspect` documents the reverse-proxy deployment where
+the gateway stays bound to `127.0.0.1` and is published — along with the browser
+admin plane at `/` — through `tailscale serve` or similar. The
+`allow_remote_admin` semantics under a proxy are covered in
+`references/gateway-endpoints.md`.
 
 **Eval coverage is nominal.** Each skill ships `evals/evals.json` with trigger and
 non-trigger cases, but there is no harness that runs them. They document intent

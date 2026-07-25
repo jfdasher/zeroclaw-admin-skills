@@ -77,6 +77,62 @@ in-memory config at load and are **never persisted**. Saving masks them back to
 the on-disk value so a temporary override cannot overwrite a real stored
 credential.
 
+## Mutating config structure
+
+Config mutation has **three tiers**, and they are not interchangeable. Reaching
+for the wrong one is the most common way to waste a session, because the failure
+is a schema error that reads like the path is wrong when the *mechanism* is
+wrong.
+
+| Tier | What it changes | How |
+|---|---|---|
+| Field | A value inside an entry that already exists | `zeroclaw config set <dotted> <value>`, or `PATCH /api/config` |
+| Structure | A whole alias entry — creating or removing one | The map-key endpoints only |
+| Array elements | Adding or removing list items positionally | **Not supported** |
+
+**Fields.** `config set` and JSON Patch operate on paths the schema can resolve.
+They edit what is there; they cannot bring an entry into being or take one away.
+
+**Structure.** Adding or removing an alias — an agent, a channel, a provider, a
+bundle, a peer group — goes through the map-key family:
+
+```sh
+# create
+curl -s -X POST -H "Authorization: Bearer $ZC_TOKEN" \
+  "http://localhost:42617/api/config/map-key?path=mcp_bundles&key=research"
+
+# remove
+curl -s -X DELETE -H "Authorization: Bearer $ZC_TOKEN" \
+  "http://localhost:42617/api/config/map-key?path=mcp_bundles&key=research"
+
+# enumerate, to confirm
+curl -s -H "Authorization: Bearer $ZC_TOKEN" \
+  "http://localhost:42617/api/config/map-keys?path=mcp_bundles"
+```
+
+**`DELETE` returns `{"created": false}` on success** — a shared response struct,
+not a failure signal. Verify with `map-keys`, not the response body.
+
+Where a CLI equivalent exists, prefer it: `zeroclaw agents delete`,
+`channels delete`, and `providers delete` reach the *same* cascade engine as the
+endpoint and add `--dry-run`, which the HTTP route has no equivalent for. The
+map-key endpoints are the right tool for sections the CLI does not cover —
+`mcp_bundles`, `skill_bundles`, `peer_groups`.
+
+**Arrays.** There is no positional insert or remove. Both of these fail:
+
+```text
+config patch  remove /mcp_bundles/mail          → property path not found in schema: mcp_bundles.mail
+config patch  remove /gateway/paired_tokens/2   → property path not found in schema: gateway.paired_tokens.2
+```
+
+The first is a *structure* change wearing an array-ish path — use map-key. The
+second is genuinely unsupported: to change a list you rewrite the whole list with
+`config set <path> '["a","b"]'`. For a list of secrets, such as
+`gateway.paired_tokens`, that means having every value you intend to keep in hand
+first, since reads never return them. **Pairing is therefore effectively
+one-way** — see `zeroclaw-introspect`.
+
 ## Stable config error codes
 
 | Code | Meaning |

@@ -109,6 +109,21 @@ pollers and listeners, the cron scheduler, and one agent loop per session.
 Two daemons must never share a config directory — memory is SQLite, which is
 single-writer. Run separate instances with `--config-dir`.
 
+## Three tiers of config change
+
+Editing a value and creating or deleting an entry are **different mechanisms**,
+and using the wrong one fails with a schema error that looks like a bad path:
+
+| To change | Use |
+|---|---|
+| A field inside an existing entry | `zeroclaw config set`, or `PATCH /api/config` |
+| A whole alias — create or delete | The map-key endpoints, or `agents`/`channels`/`providers delete` |
+| An element of a list | Rewrite the whole list; positional edits are unsupported |
+
+`config patch` with `remove` on `/mcp_bundles/mail` or `/gateway/paired_tokens/2`
+both fail — the first needs map-key, the second needs a whole-list rewrite. Full
+model and commands in `references/config-model.md`.
+
 ## Saved is not applied
 
 `zeroclaw config set` writes `config.toml`. It does **not** make the running

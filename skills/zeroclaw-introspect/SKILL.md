@@ -5,11 +5,25 @@ description: Interrogates a running ZeroClaw instance for runtime state and its 
 
 # Interrogating a ZeroClaw instance
 
-Verified against **ZeroClaw v0.8.3**. Assumes the session runs on the same host
-as the daemon.
+Verified against **ZeroClaw v0.8.3**.
 
 This skill is **read-only**. It never mutates config. For concepts, see the
 `zeroclaw-orientation` skill.
+
+**Where you are running matters.** The CLI commands here need a shell on the
+daemon's host — directly or over SSH. The `curl` examples need only network reach
+to the gateway. Both are first-class: many instances keep the gateway bound to
+`127.0.0.1` and publish it, along with the browser admin plane at `/`, through a
+same-host reverse proxy such as `tailscale serve`.
+
+Two consequences if you are working through such a proxy:
+
+- The gateway sees the proxy's loopback address, not yours, so `/admin/*`
+  answers **without a token** — including `/admin/reload`, regardless of
+  `allow_remote_admin`. Useful, and important to understand before auditing a
+  deployment. See `references/gateway-endpoints.md`.
+- Over SSH, the binary may not be on a non-interactive `PATH`. Use
+  `$HOME/.cargo/bin/zeroclaw` if a bare `zeroclaw` returns `command not found`.
 
 ## Discovery first
 
@@ -79,6 +93,16 @@ Two traps worth knowing:
 
 Every `/api/*` example below assumes `$ZC_TOKEN` is set. If you only need
 liveness and component health, skip this — `/health` needs no token.
+
+> **Pairing is close to one-way. Do not mint tokens casually.** Each successful
+> pair appends to `gateway.paired_tokens`, and there is no supported way to
+> remove one entry: `config patch` rejects positional array removal
+> (`property path not found in schema: gateway.paired_tokens.2`), and there is no
+> unpair command — `zeroclaw gateway` offers only `start`, `restart`, and
+> `get-paircode`. The only route back is rewriting the whole list with
+> `config set gateway.paired_tokens '[...]'`, which requires every value you
+> intend to keep, and reads never return secret values. Check for an existing
+> token before pairing, and prefer the CLI when it can answer the question.
 
 Admin routes are the exception in the other direction: `POST /admin/reload`
 succeeds from loopback with **no** token at all.
@@ -183,15 +207,33 @@ as JSON with `kind`, `type_hint`, `populated`, and `is_secret` per entry.
 > full document. `OPTIONS /api/config/prop?path=…` has the same defect (~1 MB).
 > Reach for `config list --filter` instead; it actually scopes.
 
-**Check which secrets are populated:**
+**Check whether one secret is populated.** Prefer the gateway — it never
+decrypts anything and answers exactly the question:
+
+```sh
+curl -s -H "Authorization: Bearer $ZC_TOKEN" \
+  "http://localhost:42617/api/config/prop?path=channels.telegram.default.bot_token"
+# {"path":"channels.telegram.default.bot_token","populated":true}
+```
+
+**To inventory every secret field at once**, the CLI is the only option:
 
 ```sh
 zeroclaw config list --secrets
 ```
 
-> **Secrets are never readable.** Reads report population only — no value, no
-> length, no mask, no hash. If asked to show an API key, explain that no
-> supported path returns one, and report whether it is populated instead.
+> **This command is not uniformly masked.** Scalar secrets (`Option<String>`,
+> `String`) render as `****`, but on a live v0.8.3 instance
+> `gateway.paired_tokens` — a `Vec<String>` secret — **prints every token in
+> full**. Assume list-valued secrets leak their contents here. Treat the output
+> as sensitive: do not paste it into files, tickets, or transcripts, and expect
+> policy-restricted environments to refuse the command outright. When you need a
+> population check rather than a full inventory, use the endpoint above.
+
+> **The API surface genuinely never returns secret values.**
+> `GET /api/config/prop` reports `{path, populated}` — no value, no length, no
+> mask, no hash — and `GET /api/config` masks them. If asked to show an API key,
+> explain that no supported path returns one and report population instead.
 
 ## Logs
 

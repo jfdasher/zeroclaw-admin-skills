@@ -5,8 +5,9 @@ description: Creates, wires, renames, and deletes ZeroClaw agents and the provid
 
 # Managing ZeroClaw agents
 
-Verified against **ZeroClaw v0.8.3**. Assumes the session runs on the same host
-as the daemon.
+Verified against **ZeroClaw v0.8.3**. CLI commands need a shell on the daemon's
+host (directly or over SSH); `curl` examples need only reach the gateway, which
+is often published through a same-host reverse proxy. See `zeroclaw-introspect`.
 
 For the agent-as-a-join model and alias grammar, see the `zeroclaw-orientation`
 skill. For inspecting current state, see `zeroclaw-introspect`.
@@ -142,6 +143,31 @@ curl -X POST http://localhost:42617/admin/reload
 
 `providers delete` and `channels delete` carry the same `--dry-run` and `--yes`
 flags and the same rule.
+
+The dry run's reference count is the safety check that matters. Removing an
+alias that something still points at leaves a `dangling_reference`, so clear the
+*references* first — an agent's `channels` list, a peer group, a delegate entry —
+and re-run the dry run. **`would scrub 0 reference(s)` is the green light.**
+
+### Doing it over the gateway
+
+`DELETE /api/config/map-key?path=agents&key=<alias>` reaches the **same cascade
+engine** as `agents delete`, so it scrubs references identically, and it is the
+only route for sections the CLI does not cover (`mcp_bundles`, `skill_bundles`,
+`peer_groups`). Two differences that matter:
+
+- **There is no `--dry-run` equivalent.** The endpoint deletes. When a preview
+  exists, prefer the CLI.
+- **Check the `warnings` array in the response.** It is omitted when empty; when
+  present, the config delete succeeded but one or more owned-state side effects
+  did not — workspace archive, memory/cron/acp purge, session attribution.
+  Inspect the archive directory before reusing the alias, and never report a 200
+  carrying warnings as a clean delete.
+
+Agent deletion refuses outright on hard references — an enabled `heartbeat.agent`
+or a live ACP session — and **fails closed** if the session store cannot be read.
+`POST /api/config/rename-map-key` with `{path, from, to}` is the rename
+equivalent. Details in `zeroclaw-introspect`'s `references/gateway-endpoints.md`.
 
 ## Fixing `dangling_reference`
 
