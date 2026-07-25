@@ -128,10 +128,13 @@ config patch  remove /gateway/paired_tokens/2   → property path not found in s
 
 The first is a *structure* change wearing an array-ish path — use map-key. The
 second is genuinely unsupported: to change a list you rewrite the whole list with
-`config set <path> '["a","b"]'`. For a list of secrets, such as
-`gateway.paired_tokens`, that means having every value you intend to keep in hand
-first, since reads never return them. **Pairing is therefore effectively
-one-way** — see `zeroclaw-introspect`.
+`config set <path> '["a","b"]'`.
+
+Some list fields are owned by a subsystem and have their own API rather than
+being edited as config at all. `gateway.paired_tokens` is the one you are most
+likely to meet: entries are added by pairing and removed by revoking the device
+(`DELETE /api/devices/{id}`), never by editing the list. See
+`zeroclaw-introspect`.
 
 ## Stable config error codes
 

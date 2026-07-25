@@ -67,20 +67,42 @@ success — a shared response literal, not a failure. The three-tier model
 `references/gateway-endpoints.md`.
 
 **5. `config list --secrets` is not uniformly masked.** Scalar secrets render as
-`****`, but `gateway.paired_tokens` — a `Vec<String>` secret — prints every token
-in full on a live instance. Skills recommended the command as a safe population
-check; `zeroclaw-introspect` and `zeroclaw-mcp` now point at
-`GET /api/config/prop` instead, which returns `{path, populated}` without
-decrypting, and the `--secrets` output carries a handling warning. The claim that
+`****`, but `gateway.paired_tokens` — a `Vec<String>` secret — prints its stored
+values in full. Skills recommended the command as a safe population check;
+`zeroclaw-introspect` and `zeroclaw-mcp` now point at `GET /api/config/prop`
+instead, which returns `{path, populated}` without decrypting. The claim that
 reads report "no value, no length, no mask, no hash" remains true of the **API**;
 it was never true of that CLI command.
 
-Also documented, both verified live: **pairing is close to one-way** — each pair
-appends to `gateway.paired_tokens`, positional array removal is rejected, and
-`zeroclaw gateway` has no unpair subcommand — and **"loopback" means the socket's
-peer address**, so a same-host reverse proxy makes the unauthenticated `/admin/*`
-tier reachable by anyone who can reach the proxy, regardless of
-`allow_remote_admin`.
+**6. `memory.backend` is a reference, not a switch.** It is a dotted path into
+`storage.<backend>.<alias>` (bare `"sqlite"` → `sqlite.default`), and
+`resolve_active_storage` returns `None` when that entry is absent. A live
+instance with `memory.backend = "sqlite"` and **no `[storage]` section** reports
+`Memory: none` in `status` — correctly. The old troubleshooting row read
+`memory.backend` as an on/off value and would have sent a reader chasing a
+display bug that does not exist.
+
+Also documented, verified live: **"loopback" means the socket's peer address**,
+so a same-host reverse proxy makes the unauthenticated `/admin/*` tier reachable
+by anyone who can reach the proxy, regardless of `allow_remote_admin`.
+
+### Corrections to the first pass of this round
+
+Two claims committed earlier in this round were wrong and are now fixed. Both
+came from stopping at the CLI surface instead of reading the source.
+
+- **"prints every token in full" overstated the severity.** `paired_tokens`
+  stores `PairingGuard::token_hash(&token)`. The printed values are hashes and
+  do not authenticate — verified by presenting one with and without the `zc_`
+  prefix and getting `401` both times. It is a masking inconsistency, not a
+  credential leak.
+- **"pairing is effectively one-way" was simply false.** `DELETE
+  /api/devices/{id}` revokes a device and drops its token hash from
+  `gateway.paired_tokens`; `GET /api/devices` inventories them and
+  `POST /api/devices/{id}/token/rotate` rotates one. The earlier claim rested on
+  `zeroclaw gateway --help` showing no unpair subcommand — true, and irrelevant,
+  because the capability lives in the devices API. Verified by revoking two
+  throwaway pairings and watching the list return to its prior length.
 
 ## Confirmed correct
 

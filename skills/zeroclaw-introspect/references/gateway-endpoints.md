@@ -49,6 +49,7 @@ Tokens are `zc_` followed by 64 hex characters. Two observed gotchas:
 | `GET /api/memory` | B | Memory entries; `?query=` and `?category=` filter |
 | `GET /api/cron` | B | Scheduled jobs |
 | `GET /api/skills/bundles` | B | Configured skill bundles |
+| `GET /api/devices` | B | Paired devices: `id`, `name`, `device_type`, `ip_address`, `paired_at`, `last_seen` |
 | `GET /api/docs` | — | Scalar API explorer; `/api/openapi.json` for the raw spec |
 
 ## Config
@@ -105,6 +106,24 @@ key removal with no cascade.
 `OPTIONS` returns capabilities; `GET` returns current values. The `Allow` header
 on `OPTIONS /api/config` still advertises legacy `PUT`, which the router does not
 register — ignore it.
+
+## Devices — the only supported unpair
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/devices` | Inventory of paired devices |
+| `DELETE /api/devices/{id}` | Revoke a device; drops its token hash from `gateway.paired_tokens` |
+| `POST /api/devices/{id}/token/rotate` | Rotate one device's token, leaving others untouched |
+| `GET`/`POST /api/devices/me/capabilities` | Capabilities of the calling device |
+
+`gateway.paired_tokens` stores `PairingGuard::token_hash(&token)` — hashes, not
+bearer tokens. It is subsystem-owned: entries arrive by pairing and leave by
+revoking, never by editing the list.
+
+Revoke the device you are authenticating with **last**; it ends your own session.
+The two stores can diverge — a live instance showed 14 device records against 3
+token hashes, because ad-hoc pairings accumulate device rows. `GET /api/devices`
+is the honest inventory.
 
 ## Admin
 

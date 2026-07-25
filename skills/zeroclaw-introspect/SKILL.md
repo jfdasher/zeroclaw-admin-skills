@@ -94,15 +94,29 @@ Two traps worth knowing:
 Every `/api/*` example below assumes `$ZC_TOKEN` is set. If you only need
 liveness and component health, skip this — `/health` needs no token.
 
-> **Pairing is close to one-way. Do not mint tokens casually.** Each successful
-> pair appends to `gateway.paired_tokens`, and there is no supported way to
-> remove one entry: `config patch` rejects positional array removal
-> (`property path not found in schema: gateway.paired_tokens.2`), and there is no
-> unpair command — `zeroclaw gateway` offers only `start`, `restart`, and
-> `get-paircode`. The only route back is rewriting the whole list with
-> `config set gateway.paired_tokens '[...]'`, which requires every value you
-> intend to keep, and reads never return secret values. Check for an existing
-> token before pairing, and prefer the CLI when it can answer the question.
+> **Every pair leaves a device record. Clean up after yourself.** A successful
+> pair appends a token hash to `gateway.paired_tokens` *and* registers a device.
+> Neither the CLI nor `config patch` can undo it — there is no unpair subcommand
+> (`zeroclaw gateway` offers only `start`, `restart`, `get-paircode`), and
+> positional array removal is rejected
+> (`property path not found in schema: gateway.paired_tokens.2`).
+>
+> **The devices API is the supported way back:**
+>
+> ```sh
+> curl -s -H "Authorization: Bearer $ZC_TOKEN" http://localhost:42617/api/devices | jq
+> curl -s -X DELETE -H "Authorization: Bearer $ZC_TOKEN" \
+>   http://localhost:42617/api/devices/<id>
+> ```
+>
+> Revoking a device drops its token hash from `gateway.paired_tokens`. Verified
+> live: two throwaway pairings revoked cleanly, returning the list to its prior
+> length. Revoke the device you are authenticating with **last** — it kills your
+> own session. Related: `POST /api/devices/{id}/token/rotate`.
+>
+> Note the two stores can disagree — a live instance showed 14 device records
+> against 3 token hashes, since ad-hoc pairings accumulate device rows.
+> `GET /api/devices` is the honest inventory.
 
 Admin routes are the exception in the other direction: `POST /admin/reload`
 succeeds from loopback with **no** token at all.
@@ -224,11 +238,17 @@ zeroclaw config list --secrets
 
 > **This command is not uniformly masked.** Scalar secrets (`Option<String>`,
 > `String`) render as `****`, but on a live v0.8.3 instance
-> `gateway.paired_tokens` — a `Vec<String>` secret — **prints every token in
-> full**. Assume list-valued secrets leak their contents here. Treat the output
-> as sensitive: do not paste it into files, tickets, or transcripts, and expect
-> policy-restricted environments to refuse the command outright. When you need a
-> population check rather than a full inventory, use the endpoint above.
+> `gateway.paired_tokens` — a `Vec<String>` secret — **prints its stored values
+> in full**. Assume list-valued secrets render unmasked here.
+>
+> What is printed for that field is the **token hash**, not the bearer token:
+> pairing stores `PairingGuard::token_hash(&token)`, and the printed values do
+> not authenticate — verified by presenting one, with and without the `zc_`
+> prefix, and getting `401` both times. So this is a masking inconsistency
+> rather than a credential leak. Still treat the output as sensitive — other
+> list-valued secrets need not be hashed — and expect policy-restricted
+> environments to refuse the command. For a population check rather than a full
+> inventory, use the endpoint above.
 
 > **The API surface genuinely never returns secret values.**
 > `GET /api/config/prop` reports `{path, populated}` — no value, no length, no
@@ -273,8 +293,30 @@ buffer, oldest first.
 | Agent won't use a tool | `zeroclaw security status --agent <alias>` — check level and `excluded_tools` |
 | Config change had no effect | Saved is not applied — see "Applying changes" below |
 | Channel in `error` state | `/health` `last_error`, then `zeroclaw channels list` |
-| Memory not persisting | `zeroclaw config get memory.backend` — `none` stores nothing |
+| Memory not persisting | `memory.backend` is a **reference**, not a switch — see below |
 | Daemon restarting repeatedly | `journalctl --user -u zeroclaw`, then set `RUST_LOG=debug` in the unit |
+
+## When `status` says `Memory: none` but memory looks configured
+
+`memory.backend` is a **dotted reference** into `storage.<backend>.<alias>`, not
+an on/off switch. A bare `"sqlite"` is read as `sqlite.default`, and
+`Config::resolve_active_storage` returns `None` whenever that entry does not
+exist — so a config reading `memory.backend = "sqlite"` with **no `[storage]`
+section at all** resolves to none, and `status` is telling the truth.
+
+```sh
+zeroclaw config get memory.backend           # e.g. sqlite  → means sqlite.default
+zeroclaw config list --filter storage        # empty output = nothing to resolve to
+```
+
+Empty output there is the diagnosis: the reference dangles, so the whole global
+`memory.*` block — hygiene, retention, search mode, dedup — has no backend to
+act on. Confirmed against a live v0.8.3 instance whose `status` reported
+`Memory: none` while `memory.backend = "sqlite"`.
+
+Per-agent `agents.<alias>.memory.backend` is a separate setting; agent memory
+files can be actively written while the global backend resolves to none, so a
+live `brain.db` does **not** disprove this. Check both before concluding.
 
 ## Applying changes
 
